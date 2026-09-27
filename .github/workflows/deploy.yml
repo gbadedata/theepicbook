@@ -1,0 +1,107 @@
+name: Build, push and deploy EpicBook
+
+# Runs only for pushes to main and manual runs, never for pull requests:
+# the runner is self-hosted on the production VM, so untrusted code must not reach it.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: epicbook-production
+  cancel-in-progress: false
+
+env:
+  REGISTRY_USER: gbadedata
+  STACK_DIR: /home/ubuntu/theepicbook
+
+jobs:
+  build:
+    name: Build images
+    runs-on: [self-hosted, linux, epicbook]
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: meta
+        name: Image tag from the commit SHA
+        run: echo "tag=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+      - name: Build backend and frontend
+        run: |
+          docker build -t "$REGISTRY_USER/epicbook-backend:${{ steps.meta.outputs.tag }}" ./backend
+          docker build -t "$REGISTRY_USER/epicbook-frontend:${{ steps.meta.outputs.tag }}" ./frontend
+
+  push:
+    name: Push images to Docker Hub
+    needs: build
+    runs-on: [self-hosted, linux, epicbook]
+    env:
+      TAG: ${{ needs.build.outputs.tag }}
+    steps:
+      - name: Log in to Docker Hub
+        env:
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: echo "$DOCKERHUB_TOKEN" | docker login -u "$REGISTRY_USER" --password-stdin
+      - name: Push backend and frontend
+        run: |
+          docker push "$REGISTRY_USER/epicbook-backend:$TAG"
+          docker push "$REGISTRY_USER/epicbook-frontend:$TAG"
+      - name: Log out of Docker Hub
+        if: always()
+        run: docker logout
+
+  deploy:
+    name: Deploy to the VM
+    needs: [build, push]
+    runs-on: [self-hosted, linux, epicbook]
+    env:
+      TAG: ${{ needs.build.outputs.tag }}
+    steps:
+      - name: Check out this exact commit in the stack directory
+        run: |
+          cd "$STACK_DIR"
+          git fetch --quiet origin main
+          git checkout --quiet --detach "$GITHUB_SHA"
+          git log -1 --oneline
+      - name: Record the image tags in the server-only .env
+        run: |
+          cd "$STACK_DIR"
+          for kv in "BACKEND_IMAGE=$REGISTRY_USER/epicbook-backend:$TAG" "FRONTEND_IMAGE=$REGISTRY_USER/epicbook-frontend:$TAG"; do
+            key="${kv%%=*}"
+            if grep -q "^$key=" .env; then sed -i "s|^$key=.*|$kv|" .env; else echo "$kv" >> .env; fi
+          done
+          grep -E '^(BACKEND|FRONTEND)_IMAGE=' .env
+      - name: Pull and roll out backend and frontend
+        run: |
+          cd "$STACK_DIR"
+          docker compose pull backend frontend
+          docker compose up -d --wait --no-build
+
+  verify:
+    name: Verify the deployment
+    needs: [build, deploy]
+    runs-on: [self-hosted, linux, epicbook]
+    env:
+      TAG: ${{ needs.build.outputs.tag }}
+    steps:
+      - name: Running images carry this commit's tag
+        run: |
+          cd "$STACK_DIR"
+          for svc in backend frontend; do
+            image="$(docker inspect -f '{{.Config.Image}}' "$(docker compose ps -q "$svc")")"
+            echo "$svc -> $image"
+            [ "$image" = "$REGISTRY_USER/epicbook-$svc:$TAG" ]
+          done
+      - name: Health, page, API and asset through the reverse proxy
+        run: |
+          curl -fsS http://localhost/health | tee /dev/stderr | grep -q '"database":"up"'
+          for path in / /api/cart /assets/css/style.css; do
+            code="$(curl -s -o /dev/null -w '%{http_code}' "http://localhost$path")"
+            echo "$path -> $code"
+            [ "$code" = 200 ]
+          done
+      - name: Service status
+        run: cd "$STACK_DIR" && docker compose ps

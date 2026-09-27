@@ -32,7 +32,7 @@ services:
 
   frontend:
     build: ./frontend
-    image: epicbook-frontend:1.1.0
+    image: ${FRONTEND_IMAGE:-epicbook-frontend:1.1.0}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/assets/css/style.css"]
@@ -46,7 +46,7 @@ services:
 
   backend:
     build: ./backend
-    image: epicbook-backend:1.0.0
+    image: ${BACKEND_IMAGE:-epicbook-backend:1.0.0}
     restart: unless-stopped
     environment:
       NODE_ENV: production
