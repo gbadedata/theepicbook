@@ -32,10 +32,10 @@ services:
 
   frontend:
     build: ./frontend
-    image: epicbook-frontend:1.0.0
+    image: epicbook-frontend:1.1.0
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/assets/css/style.css"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/assets/css/style.css"]
       interval: 10s
       timeout: 5s
       retries: 3

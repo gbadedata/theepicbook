@@ -6,7 +6,7 @@ Prepared by Oluwagbade Odimayo. Selected reverse proxy: **Nginx**.
 
 | Path | Destination | Purpose |
 |---|---|---|
-| `/assets/` | frontend:80 | Static CSS, JavaScript and images |
+| `/assets/` | frontend:8080 | Static CSS, JavaScript and images |
 | `/api/` | backend:8080 | JSON API (cart) |
 | `/health` | backend:8080 | Application and database health |
 | `/proxy-health` | Nginx itself | Proxy liveness for its Docker health check |

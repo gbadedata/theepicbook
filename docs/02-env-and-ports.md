@@ -20,7 +20,7 @@ Prepared by Oluwagbade Odimayo. Values are never stored in Git: real secrets liv
 | Service | Internal port | Published to the host | Networks |
 |---|---|---|---|
 | reverse-proxy (Nginx) | 80 | **80 (the only public port)** | front-tier |
-| frontend (Nginx, static files) | 80 | No | front-tier |
+| frontend (unprivileged Nginx, static files) | 8080 | No | front-tier |
 | backend (Node.js, Express) | 8080 | No | front-tier, back-tier |
 | database (MySQL 8.4) | 3306 | No | back-tier (internal) |
 
