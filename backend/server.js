@@ -17,6 +17,32 @@ app.use(express.static("public"));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
+// Health check: 200 when the app can reach MySQL, 503 when it cannot. Registered before the
+// request logger so the 10-second Docker health checks do not flood the logs.
+app.get("/health", async (req, res) => {
+  try {
+    await db.sequelize.authenticate();
+    res.status(200).json({ status: "ok", database: "up" });
+  } catch (err) {
+    res.status(503).json({ status: "error", database: "down" });
+  }
+});
+
+// One JSON line per request: method, path (no query string), status, duration. No headers or bodies.
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on("finish", () => {
+    console.log(JSON.stringify({
+      time: new Date().toISOString(),
+      method: req.method,
+      path: req.path,
+      status: res.statusCode,
+      ms: Date.now() - start,
+    }));
+  });
+  next();
+});
+
 app.engine("handlebars", exphbs({ defaultLayout: "main" }));
 app.set("view engine", "handlebars");
 

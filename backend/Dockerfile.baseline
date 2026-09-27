@@ -1,0 +1,7 @@
+# Baseline for size comparison only: single stage, full Debian Node image, all dependencies, runs as root
+FROM node:22
+WORKDIR /app
+COPY . .
+RUN npm install
+EXPOSE 8080
+CMD ["node", "server.js"]
